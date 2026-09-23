@@ -100,6 +100,7 @@ jobs:
           out=/tmp/kidletime-sheng-arm64
           mkdir -p "$out"
           cp /tmp/debian-source/libkf6idletime6_6.13.0-1+sheng1_arm64.deb "$out/"
+          cp /tmp/debian-source/libkf6idletime6-dbgsym_6.13.0-1+sheng1_arm64.deb "$out/"
           cp /tmp/debian-source/libkf6idletime-dev_6.13.0-1+sheng1_arm64.deb "$out/"
           cp /tmp/debian-source/libkf6idletime-doc_6.13.0-1+sheng1_all.deb "$out/"
           cp /tmp/debian-source/kf6-kidletime_6.13.0-1+sheng1_arm64.buildinfo "$out/"
@@ -110,8 +111,16 @@ jobs:
           dpkg-deb --info "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb"
           dpkg-deb --contents "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" | \
             grep 'KF6IdleTimeWaylandPlugin.so'
-          readelf -h "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" 2>/dev/null || true
+          test "$(dpkg-deb --field "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" Architecture)" = arm64
+          test "$(dpkg-deb --field "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" Version)" = 6.13.0-1+sheng1
+          extract=$(mktemp -d)
+          dpkg-deb -x "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" "$extract"
+          readelf -h "$extract/usr/lib/aarch64-linux-gnu/qt6/plugins/kf6/org.kde.kidletime.platforms/KF6IdleTimeWaylandPlugin.so" | \
+            grep 'Machine:.*AArch64'
           cd "$out"
+          awk '/^Checksums-Sha256:/{found=1;next} found && /^ [0-9a-f]/{print $1"  "$3;next} found{exit}' \
+            kf6-kidletime_6.13.0-1+sheng1_arm64.changes > SHA256SUMS.changes
+          sha256sum -c SHA256SUMS.changes
           sha256sum * > SHA256SUMS
           sha256sum -c SHA256SUMS
 
