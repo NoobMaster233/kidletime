@@ -25,7 +25,7 @@ jobs:
       - name: Check out patched KDE source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Record source provenance
         run: |
