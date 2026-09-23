@@ -1,0 +1,119 @@
+name: Build sheng KF6IdleTime ARM64 package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sheng-wayland-idle-reset
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64-deb:
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    timeout-minutes: 45
+
+    steps:
+      - name: Install bootstrap tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl devscripts dpkg-dev git quilt xz-utils
+
+      - name: Check out patched KDE source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Record source provenance
+        run: |
+          set -eu
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD^)" = d8d838a194407e651990e5cd98eede4c6a6f9ee9
+          git diff --check HEAD^
+          git diff --binary HEAD^ HEAD -- src/plugins/wayland/poller.cpp > /tmp/sheng-wayland-idle-reset.patch
+          test -s /tmp/sheng-wayland-idle-reset.patch
+          {
+            printf 'workflow_repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+            printf 'workflow_run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'runner_arch=%s\n' "$(uname -m)"
+            printf 'base_commit=%s\n' "$(git rev-parse HEAD^)"
+            printf 'patch_sha256=%s\n' "$(sha256sum /tmp/sheng-wayland-idle-reset.patch | cut -d' ' -f1)"
+          } > /tmp/PROVENANCE.txt
+
+      - name: Fetch exact Debian 13 source package
+        run: |
+          set -eu
+          mkdir -p /tmp/debian-source
+          cd /tmp/debian-source
+          base=https://deb.debian.org/debian/pool/main/k/kf6-kidletime
+          for file in \
+            kf6-kidletime_6.13.0-1.dsc \
+            kf6-kidletime_6.13.0.orig.tar.xz \
+            kf6-kidletime_6.13.0.orig.tar.xz.asc \
+            kf6-kidletime_6.13.0-1.debian.tar.xz
+          do
+            curl -fLO "$base/$file"
+          done
+          echo 'c716b3bf72ac4c208f08f2bc74f23115c5850a8cca56e1e3dceacc830d8525c2  kf6-kidletime_6.13.0-1.dsc' > SHA256SUMS.source
+          echo 'ee17d3f7cdd507390e0e9ba96896b7dcfaa008e385a9db423207bc3ee236e6dc  kf6-kidletime_6.13.0.orig.tar.xz' >> SHA256SUMS.source
+          echo '41f05c72f1fff291c72f9b0a4a2a2dc60ba9889032b6c2c3f3dec6cf4c467901  kf6-kidletime_6.13.0.orig.tar.xz.asc' >> SHA256SUMS.source
+          echo 'b7d42b641aea144e7adf3946baffe2b377a340e3feb3cdb21e5fe0007209f4c7  kf6-kidletime_6.13.0-1.debian.tar.xz' >> SHA256SUMS.source
+          sha256sum -c SHA256SUMS.source
+          dpkg-source -x kf6-kidletime_6.13.0-1.dsc
+
+      - name: Apply patch as a Debian quilt change
+        run: |
+          set -eu
+          src=/tmp/debian-source/kf6-kidletime-6.13.0
+          mkdir -p "$src/debian/patches"
+          cp /tmp/sheng-wayland-idle-reset.patch "$src/debian/patches/sheng-wayland-idle-reset.patch"
+          printf '%s\n' sheng-wayland-idle-reset.patch >> "$src/debian/patches/series"
+          cd "$src"
+          QUILT_PATCHES=debian/patches quilt push -a
+          DEBFULLNAME='NoobMaster233' DEBEMAIL='NoobMaster233@users.noreply.github.com' \
+            dch --newversion 6.13.0-1+sheng1 --distribution trixie \
+            'Implement Wayland simulated-activity timeout rearming for sheng validation.'
+          grep -n -A35 -B5 'simulateUserActivity' src/plugins/wayland/poller.cpp
+
+      - name: Install exact build dependencies
+        run: |
+          apt-get build-dep -y /tmp/debian-source/kf6-kidletime-6.13.0
+
+      - name: Build binary packages
+        run: |
+          set -eu
+          cd /tmp/debian-source/kf6-kidletime-6.13.0
+          dpkg-buildpackage --build=binary --unsigned-changes
+
+      - name: Validate packages and assemble artifact
+        run: |
+          set -eu
+          out=/tmp/kidletime-sheng-arm64
+          mkdir -p "$out"
+          cp /tmp/debian-source/libkf6idletime6_6.13.0-1+sheng1_arm64.deb "$out/"
+          cp /tmp/debian-source/libkf6idletime-dev_6.13.0-1+sheng1_arm64.deb "$out/"
+          cp /tmp/debian-source/libkf6idletime-doc_6.13.0-1+sheng1_all.deb "$out/"
+          cp /tmp/debian-source/kf6-kidletime_6.13.0-1+sheng1_arm64.buildinfo "$out/"
+          cp /tmp/debian-source/kf6-kidletime_6.13.0-1+sheng1_arm64.changes "$out/"
+          cp /tmp/debian-source/SHA256SUMS.source "$out/"
+          cp /tmp/sheng-wayland-idle-reset.patch "$out/"
+          cp /tmp/PROVENANCE.txt "$out/"
+          dpkg-deb --info "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb"
+          dpkg-deb --contents "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" | \
+            grep 'KF6IdleTimeWaylandPlugin.so'
+          readelf -h "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" 2>/dev/null || true
+          cd "$out"
+          sha256sum * > SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Upload ARM64 Debian packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: kf6-kidletime-6.13.0-1-sheng1-arm64
+          path: /tmp/kidletime-sheng-arm64/
+          if-no-files-found: error
+          retention-days: 30
