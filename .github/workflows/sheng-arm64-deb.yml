@@ -30,17 +30,22 @@ jobs:
       - name: Record source provenance
         run: |
           set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(uname -m)" = aarch64
-          test "$(git rev-parse HEAD^)" = d8d838a194407e651990e5cd98eede4c6a6f9ee9
-          git diff --check HEAD^
-          git diff --binary HEAD^ HEAD -- src/plugins/wayland/poller.cpp > /tmp/sheng-wayland-idle-reset.patch
+          base_commit=d8d838a194407e651990e5cd98eede4c6a6f9ee9
+          code_commit=f9465be1ec97f3bd7dc0e785fcacfbc521e490bd
+          test "$(git rev-parse "$code_commit^")" = "$base_commit"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$base_commit" "$code_commit"
+          git diff --binary "$base_commit" "$code_commit" -- src/plugins/wayland/poller.cpp > /tmp/sheng-wayland-idle-reset.patch
           test -s /tmp/sheng-wayland-idle-reset.patch
           {
             printf 'workflow_repository=%s\n' "$GITHUB_REPOSITORY"
             printf 'workflow_sha=%s\n' "$GITHUB_SHA"
             printf 'workflow_run_id=%s\n' "$GITHUB_RUN_ID"
             printf 'runner_arch=%s\n' "$(uname -m)"
-            printf 'base_commit=%s\n' "$(git rev-parse HEAD^)"
+            printf 'base_commit=%s\n' "$base_commit"
+            printf 'code_commit=%s\n' "$code_commit"
             printf 'patch_sha256=%s\n' "$(sha256sum /tmp/sheng-wayland-idle-reset.patch | cut -d' ' -f1)"
           } > /tmp/PROVENANCE.txt
 
