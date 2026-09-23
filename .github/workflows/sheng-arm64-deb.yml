@@ -94,6 +94,18 @@ jobs:
           cd /tmp/debian-source/kf6-kidletime-6.13.0
           dpkg-buildpackage --build=binary --unsigned-changes
 
+      - name: Build Wayland runtime integration test
+        run: |
+          set -eu
+          apt-get install -y \
+            /tmp/debian-source/libkf6idletime6_6.13.0-1+sheng1_arm64.deb \
+            /tmp/debian-source/libkf6idletime-dev_6.13.0-1+sheng1_arm64.deb
+          cmake -S .github/tests -B /tmp/sheng-idle-test-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build /tmp/sheng-idle-test-build --parallel
+          file /tmp/sheng-idle-test-build/sheng-idle-rearm-test
+          readelf -h /tmp/sheng-idle-test-build/sheng-idle-rearm-test | grep 'Machine:.*AArch64'
+
       - name: Validate packages and assemble artifact
         run: |
           set -eu
@@ -108,6 +120,8 @@ jobs:
           cp /tmp/debian-source/SHA256SUMS.source "$out/"
           cp /tmp/sheng-wayland-idle-reset.patch "$out/"
           cp /tmp/PROVENANCE.txt "$out/"
+          cp /tmp/sheng-idle-test-build/sheng-idle-rearm-test "$out/"
+          cp .github/tests/sheng-idle-rearm-test.cpp "$out/"
           dpkg-deb --info "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb"
           dpkg-deb --contents "$out/libkf6idletime6_6.13.0-1+sheng1_arm64.deb" | \
             grep 'KF6IdleTimeWaylandPlugin.so'
