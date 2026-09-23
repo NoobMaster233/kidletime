@@ -191,6 +191,32 @@ int Poller::forcePollRequest()
 
 void Poller::simulateUserActivity()
 {
+    /*
+     * ext_idle_notification_v1 has no request for simulating activity.
+     * A newly created notification starts its timeout at creation time,
+     * though, so rebuilding our notification objects provides the same
+     * observable timeout behaviour to KIdleTime clients without pretending
+     * that physical input occurred on the seat.
+     */
+    const QList<int> registeredTimeouts = m_timeouts.keys();
+    const bool wasCatchingResume = !m_catchResumeTimeout.isNull();
+
+    m_catchResumeTimeout.reset();
+    m_timeouts.clear();
+
+    for (int timeout : registeredTimeouts) {
+        addTimeout(timeout);
+    }
+
+    /*
+     * simulateUserActivity() is itself the resume event requested through
+     * catchIdleEvent(). Clear the zero-timeout object first so emitting this
+     * signal cannot recurse indefinitely when a client calls us again from
+     * its resumingFromIdle handler.
+     */
+    if (wasCatchingResume) {
+        Q_EMIT resumingFromIdle();
+    }
 }
 
 IdleTimeout* Poller::createTimeout(int timeout)
