@@ -100,7 +100,7 @@ jobs:
           apt-get install -y \
             /tmp/debian-source/libkf6idletime6_6.13.0-1+sheng1_arm64.deb \
             /tmp/debian-source/libkf6idletime-dev_6.13.0-1+sheng1_arm64.deb
-          cmake -S .github/tests -B /tmp/sheng-idle-test-build -G Ninja \
+          cmake -S .github/tests -B /tmp/sheng-idle-test-build \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build /tmp/sheng-idle-test-build --parallel
           file /tmp/sheng-idle-test-build/sheng-idle-rearm-test
